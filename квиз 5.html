@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <title>Генератор тестов</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/docx/7.7.0/docx.min.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; max-width: 800px; margin: auto; }
+    .question { margin-bottom: 20px; }
+    .answers button { display: block; margin: 5px 0; padding: 10px; width: 100%; }
+    .correct { background-color: green; color: white; }
+    .incorrect { background-color: red; color: white; }
+    #result { font-weight: bold; margin-top: 20px; }
+  </style>
+</head>
+<body>
+  <h1>Генератор тестов из файла</h1>
+  <input type="file" id="fileInput" accept=".txt,.xlsx,.docx">
+  <div id="quiz"></div>
+  <div id="result"></div>
+
+  <script>
+    let questions = [];
+    let current = 0;
+    let score = 0;
+
+    document.getElementById('fileInput').addEventListener('change', function(e) {
+      const file = e.target.files[0];
+      const reader = new FileReader();
+
+      if (file.name.endsWith('.txt')) {
+        reader.onload = function(event) {
+          parseText(event.target.result);
+          showQuestion();
+        };
+        reader.readAsText(file);
+      } else if (file.name.endsWith('.xlsx')) {
+        reader.onload = function(event) {
+          const data = new Uint8Array(event.target.result);
+          const workbook = XLSX.read(data, { type: 'array' });
+          const sheet = workbook.Sheets[workbook.SheetNames[0]];
+          const json = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+          parseFromArray(json);
+          showQuestion();
+        };
+        reader.readAsArrayBuffer(file);
+      } else if (file.name.endsWith('.docx')) {
+        reader.onload = async function(event) {
+          const buffer = event.target.result;
+          const doc = await window.docx.Document.load(buffer);
+          const text = doc.getBody().map(p => p.getText()).join('\n');
+          parseText(text);
+          showQuestion();
+        };
+        reader.readAsArrayBuffer(file);
+      }
+    });
+
+    function parseText(text) {
+      const blocks = text.split(/\n\s*\n/);
+      questions = blocks.map(block => {
+        const lines = block.trim().split('\n');
+        const questionText = lines[0].replace(/^\d+\.\s*/, '');
+        const options = lines.slice(1).map(line => line.trim());
+        const correct = options[0];
+        const shuffled = options.slice().sort(() => Math.random() - 0.5);
+        return { question: questionText, options: shuffled, correct };
+      });
+    }
+
+    function parseFromArray(rows) {
+      questions = rows.map(row => {
+        const questionText = row[0];
+        const options = row.slice(1, 6).map(opt => opt.toString());
+        const correct = options[0];
+        const shuffled = options.slice().sort(() => Math.random() - 0.5);
+        return { question: questionText, options: shuffled, correct };
+      });
+    }
+
+    function showQuestion() {
+      if (current >= questions.length) {
+        document.getElementById('quiz').innerHTML = '';
+        document.getElementById('result').innerText = `Вы набрали ${score} из ${questions.length}`;
+        return;
+      }
+
+      const q = questions[current];
+      const quizDiv = document.getElementById('quiz');
+      quizDiv.innerHTML = '';
+
+      const qDiv = document.createElement('div');
+      qDiv.className = 'question';
+      qDiv.innerHTML = `<strong>Вопрос ${current + 1}:</strong> ${q.question}`;
+      quizDiv.appendChild(qDiv);
+
+      const answersDiv = document.createElement('div');
+      answersDiv.className = 'answers';
+
+      q.options.forEach(option => {
+        const btn = document.createElement('button');
+        btn.textContent = option;
+        btn.onclick = function() {
+          // Подсвечиваем правильный ответ
+          if (option === q.correct) {
+            btn.classList.add('correct');
+            score++;
+          } else {
+            btn.classList.add('incorrect');
+            // Ищем правильный ответ и подсвечиваем его зеленым
+            const correctBtn = Array.from(answersDiv.children).find(button => button.textContent === q.correct);
+            if (correctBtn) correctBtn.classList.add('correct');
+          }
+          // Задержка для отображения результата и перехода к следующему вопросу
+          setTimeout(() => {
+            current++;
+            showQuestion();
+          }, 1000);  // Задержка 1 секунда
+        };
+        answersDiv.appendChild(btn);
+      });
+
+      quizDiv.appendChild(answersDiv);
+    }
+  </script>
+</body>
+</html>
